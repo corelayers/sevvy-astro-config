@@ -73,7 +73,7 @@ def send_success_webhook(context):
         
         # Send webhook request
         response = requests.post(
-            "https://655608b6e6d3.ngrok-free.app/api/webhooks/airflow",
+            "https://sevvy-web-git-anomaly-config-sevvy.vercel.app/api/webhooks/airflow",
             json=webhook_payload,
             headers={"Content-Type": "application/json"},
             timeout=30
