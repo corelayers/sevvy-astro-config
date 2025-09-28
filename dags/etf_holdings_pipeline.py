@@ -110,7 +110,6 @@ default_args = {
     schedule='@daily',
     catchup=False,
     tags=['etl', 'finance', 'etf', 'production'],
-    on_success_callback=send_success_webhook,
 )
 def etf_holdings_pipeline():
     """Main DAG definition using TaskFlow API"""
@@ -387,6 +386,12 @@ def etf_holdings_pipeline():
             cursor.close()
             conn.close()
     
+    @task()
+    def send_webhook(**context):
+        """Send success webhook after all tasks complete successfully"""
+        send_success_webhook(context)
+        return "Webhook sent"
+    
     # Define task dependencies with optimized parallel execution
     market_data = read_etf_market_data()
     rates = read_exchange_rates()
@@ -399,7 +404,10 @@ def etf_holdings_pipeline():
     holdings = calculate_holdings(usd_prices, trades)
     
     # Write holdings to database
-    write_etf_holdings(holdings)
+    write_task = write_etf_holdings(holdings)
+    
+    # Send webhook after successful completion
+    write_task >> send_webhook()
 
 # Instantiate the DAG
 dag = etf_holdings_pipeline()

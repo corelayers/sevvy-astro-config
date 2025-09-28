@@ -112,7 +112,6 @@ default_args = {
     schedule='@daily',
     catchup=False,
     tags=['etl', 'finance', 'currency', 'production'],
-    on_success_callback=send_success_webhook,
 )
 def currency_conversion_pipeline():
     """Main DAG definition using TaskFlow API"""
@@ -301,11 +300,20 @@ def currency_conversion_pipeline():
             cursor.close()
             conn.close()
     
+    @task()
+    def send_webhook(**context):
+        """Send success webhook after all tasks complete successfully"""
+        send_success_webhook(context)
+        return "Webhook sent"
+    
     # Define task dependencies
     trades = read_base_trades()
     rates = read_exchange_rates()
     processed = calculate_usd_notionals(trades, rates)
-    write_to_general_ledger(processed)
+    write_task = write_to_general_ledger(processed)
+    
+    # Send webhook after successful completion
+    write_task >> send_webhook()
 
 # Instantiate the DAG
 dag = currency_conversion_pipeline()
