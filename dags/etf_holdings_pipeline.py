@@ -25,12 +25,15 @@ from airflow.providers.postgres.hooks.postgres import PostgresHook
 import requests
 
 
-def send_success_webhook(context):
+def send_success_webhook(context, holdings_processed, total_holdings_value, business_date):
     """
-    Send success webhook notification to the monitoring endpoint (DAG-level callback)
+    Send success webhook notification to the monitoring endpoint
     
     Args:
         context: Airflow context containing DAG run and task instance details
+        holdings_processed: Number of holdings written to database
+        total_holdings_value: Total value of all holdings
+        business_date: The business date for the holdings
     """
     print("🔔 Sending DAG success webhook notification")
     logging.info("Sending DAG success webhook notification")
@@ -41,17 +44,12 @@ def send_success_webhook(context):
         dag = context.get('dag')
         execution_date = context.get('execution_date') or context.get('logical_date')
         
-        # Get processed data statistics from XCom
-        task_instance = context.get('task_instance')
-        holdings_processed = task_instance.xcom_pull(task_ids='write_etf_holdings', key='holdings_processed') or 0
-        total_holdings_value = task_instance.xcom_pull(task_ids='write_etf_holdings', key='total_holdings_value') or 0
-        business_date = task_instance.xcom_pull(task_ids='write_etf_holdings', key='business_date') or str(execution_date.date())
-        
         # Prepare webhook payload
         webhook_payload = {
             "event_type": "dag_success",
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "dag_id": dag.dag_id,
+            "task_id": "write_etf_holdings",  # Task that triggered the webhook
             "run_id": dag_run.run_id,
             "organization_id": "cmfhfglh40k9h01rbszv8zhxx",
             "deployment_id": "cmfhfmdq70kb601rb5wu0d2nd",
@@ -376,6 +374,9 @@ def etf_holdings_pipeline():
             context['ti'].xcom_push(key='total_holdings_value', value=total_holdings_value)
             context['ti'].xcom_push(key='business_date', value=business_date)
             
+            # Send success webhook after successful write
+            send_success_webhook(context, holdings_written, total_holdings_value, business_date)
+            
         except Exception as e:
             conn.rollback()
             print(f"❌ Error writing to etf_holdings: {str(e)}")
@@ -384,12 +385,6 @@ def etf_holdings_pipeline():
         finally:
             cursor.close()
             conn.close()
-    
-    @task()
-    def send_webhook(**context):
-        """Send success webhook after all tasks complete successfully"""
-        send_success_webhook(context)
-        return "Webhook sent"
     
     # Define task dependencies with optimized parallel execution
     market_data = read_etf_market_data()
@@ -403,10 +398,7 @@ def etf_holdings_pipeline():
     holdings = calculate_holdings(usd_prices, trades)
     
     # Write holdings to database
-    write_task = write_etf_holdings(holdings)
-    
-    # Send webhook after successful completion
-    write_task >> send_webhook()
+    write_etf_holdings(holdings)
 
 # Instantiate the DAG
 dag = etf_holdings_pipeline()

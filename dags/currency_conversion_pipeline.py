@@ -26,12 +26,15 @@ from airflow.providers.postgres.hooks.postgres import PostgresHook
 import requests
 
 
-def send_success_webhook(context):
+def send_success_webhook(context, trades_processed, total_usd_notional, business_date):
     """
-    Send success webhook notification to the monitoring endpoint (DAG-level callback)
+    Send success webhook notification to the monitoring endpoint
     
     Args:
         context: Airflow context containing DAG run and task instance details
+        trades_processed: Number of trades written to database
+        total_usd_notional: Total USD notional value
+        business_date: The business date for the trades
     """
     print("🔔 Sending DAG success webhook notification")
     logging.info("Sending DAG success webhook notification")
@@ -42,17 +45,12 @@ def send_success_webhook(context):
         dag = context.get('dag')
         execution_date = context.get('execution_date') or context.get('logical_date')
         
-        # Get processed data statistics from XCom
-        task_instance = context.get('task_instance')
-        trades_processed = task_instance.xcom_pull(task_ids='write_to_general_ledger', key='trades_processed') or 0
-        total_usd_notional = task_instance.xcom_pull(task_ids='write_to_general_ledger', key='total_usd_notional') or 0
-        business_date = task_instance.xcom_pull(task_ids='write_to_general_ledger', key='business_date') or str(execution_date.date())
-        
         # Prepare webhook payload
         webhook_payload = {
             "event_type": "dag_success",
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "dag_id": dag.dag_id,
+            "task_id": "write_to_general_ledger",  # Task that triggered the webhook
             "run_id": dag_run.run_id,
             "organization_id": "cmfhfglh40k9h01rbszv8zhxx",
             "deployment_id": "cmfhfmdq70kb601rb5wu0d2nd",
@@ -290,6 +288,10 @@ def currency_conversion_pipeline():
             context['ti'].xcom_push(key='total_usd_notional', value=total_usd_notional)
             context['ti'].xcom_push(key='business_date', value=processed_trades[0]['business_date'] if processed_trades else None)
             
+            # Send success webhook after successful write
+            business_date = processed_trades[0]['business_date'] if processed_trades else str(context.get('execution_date', context.get('logical_date')).date())
+            send_success_webhook(context, trades_updated, total_usd_notional, business_date)
+            
         except Exception as e:
             conn.rollback()
             print(f"❌ Error updating general_ledger_trades: {str(e)}")
@@ -299,20 +301,11 @@ def currency_conversion_pipeline():
             cursor.close()
             conn.close()
     
-    @task()
-    def send_webhook(**context):
-        """Send success webhook after all tasks complete successfully"""
-        send_success_webhook(context)
-        return "Webhook sent"
-    
     # Define task dependencies
     trades = read_base_trades()
     rates = read_exchange_rates()
     processed = calculate_usd_notionals(trades, rates)
-    write_task = write_to_general_ledger(processed)
-    
-    # Send webhook after successful completion
-    write_task >> send_webhook()
+    write_to_general_ledger(processed)
 
 # Instantiate the DAG
 dag = currency_conversion_pipeline()
