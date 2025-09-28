@@ -43,10 +43,9 @@ def send_success_webhook(context):
         
         # Get processed data statistics from XCom
         task_instance = context.get('task_instance')
-        ti = dag_run.get_task_instance('write_etf_holdings')
-        holdings_processed = ti.xcom_pull(key='holdings_processed') or 0
-        total_holdings_value = ti.xcom_pull(key='total_holdings_value') or 0
-        business_date = ti.xcom_pull(key='business_date') or str(execution_date.date())
+        holdings_processed = task_instance.xcom_pull(task_ids='write_etf_holdings', key='holdings_processed') or 0
+        total_holdings_value = task_instance.xcom_pull(task_ids='write_etf_holdings', key='total_holdings_value') or 0
+        business_date = task_instance.xcom_pull(task_ids='write_etf_holdings', key='business_date') or str(execution_date.date())
         
         # Prepare webhook payload
         webhook_payload = {

@@ -44,10 +44,9 @@ def send_success_webhook(context):
         
         # Get processed data statistics from XCom
         task_instance = context.get('task_instance')
-        ti = dag_run.get_task_instance('write_to_general_ledger')
-        trades_processed = ti.xcom_pull(key='trades_processed') or 0
-        total_usd_notional = ti.xcom_pull(key='total_usd_notional') or 0
-        business_date = ti.xcom_pull(key='business_date') or str(execution_date.date())
+        trades_processed = task_instance.xcom_pull(task_ids='write_to_general_ledger', key='trades_processed') or 0
+        total_usd_notional = task_instance.xcom_pull(task_ids='write_to_general_ledger', key='total_usd_notional') or 0
+        business_date = task_instance.xcom_pull(task_ids='write_to_general_ledger', key='business_date') or str(execution_date.date())
         
         # Prepare webhook payload
         webhook_payload = {
