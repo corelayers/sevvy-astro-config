@@ -319,8 +319,16 @@ def etf_holdings_pipeline():
         """
         print(f"💾 Writing {len(holdings)} holdings to etf_holdings table")
         
+        # Initialize variables for webhook
+        holdings_written = 0
+        total_holdings_value = 0
+        execution_date = context.get('execution_date') or context.get('logical_date')
+        business_date = execution_date.strftime('%Y-%m-%d')
+        
         if not holdings:
             print("⚠️  No holdings to write")
+            # Still send webhook notification even with no data
+            send_success_webhook(context, holdings_written, total_holdings_value, business_date)
             return
         
         # Get database connection
@@ -328,7 +336,7 @@ def etf_holdings_pipeline():
         
         # Aggregate holdings by symbol for final output
         etf_totals = {}
-        business_date = holdings[0]['business_date'] if holdings else None
+        business_date = holdings[0]['business_date'] if holdings else business_date
         
         for holding in holdings:
             symbol = holding['etf_symbol']
@@ -350,9 +358,6 @@ def etf_holdings_pipeline():
         cursor = conn.cursor()
         
         try:
-            holdings_written = 0
-            total_holdings_value = 0
-            
             for symbol, amount in etf_totals.items():
                 cursor.execute(insert_query, (
                     business_date,
