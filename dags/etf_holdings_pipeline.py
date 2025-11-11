@@ -126,7 +126,7 @@ def etf_holdings_pipeline():
         
         # Query to fetch ETF prices
         query = """
-            SELECT price_date, symbol, price, currency
+            SELECT price_date, symbol, price, currency, asset_id, asset_weight
             FROM public.etf_market_data
             WHERE price_date = %s
             ORDER BY symbol
@@ -142,7 +142,9 @@ def etf_holdings_pipeline():
                 'price_date': str(row[0]),
                 'symbol': row[1],
                 'price': float(row[2]),
-                'currency': row[3]
+                'currency': row[3],
+                'asset_id': row[4],
+                'asset_weight': float(row[5]) if row[5] else None
             })
         
         print(f"✅ Found {len(market_data)} ETF prices for {business_date}")
@@ -258,7 +260,9 @@ def etf_holdings_pipeline():
                 'symbol': etf['symbol'],
                 'original_price': original_price,
                 'original_currency': currency,
-                'usd_price': usd_price
+                'usd_price': usd_price,
+                'asset_id': etf.get('asset_id'),
+                'asset_weight': etf.get('asset_weight')
             })
         
         print(f"✅ Calculated USD prices for {len(usd_prices)} ETFs")
@@ -295,7 +299,9 @@ def etf_holdings_pipeline():
                         'price_usd': price['usd_price'],
                         'holding_value_usd': holding_value,
                         'trade_id': trade['trade_id'],
-                        'price_date': price['price_date']
+                        'price_date': price['price_date'],
+                        'asset_id': price.get('asset_id'),
+                        'asset_weight': price.get('asset_weight')
                     })
                     
                     total_value += holding_value
