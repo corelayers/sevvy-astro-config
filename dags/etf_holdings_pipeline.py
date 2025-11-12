@@ -1,3 +1,4 @@
+```python
 """
 ## ETF Holdings Pipeline
 
@@ -290,7 +291,7 @@ def etf_holdings_pipeline():
             
             for price in usd_prices:
                 if price['symbol'] == trade_symbol:
-                    holding_value = trade_shares * price['usd_price']
+                    holding_value = trade_shares * price['usd_price'] * (price.get('asset_weight', 1.0) or 1.0)
                     
                     holdings.append({
                         'business_date': business_date,
@@ -413,3 +414,4 @@ def etf_holdings_pipeline():
 
 # Instantiate the DAG
 dag = etf_holdings_pipeline()
+```
