@@ -70,7 +70,7 @@ def send_success_webhook(context, trades_processed, total_usd_notional, business
         
         # Send webhook request
         response = requests.post(
-            "https://sevvy-web-git-anomaly-config-sevvy.vercel.app/api/webhooks/airflow",
+            "https://sevvy-web-git-demo-sevvy.vercel.app/api/webhooks/airflow",
             json=webhook_payload,
             headers={"Content-Type": "application/json"},
             timeout=30
