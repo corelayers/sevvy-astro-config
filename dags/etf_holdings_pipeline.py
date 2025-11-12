@@ -1,3 +1,4 @@
+```python
 """
 ## ETF Holdings Pipeline
 
@@ -278,10 +279,28 @@ def etf_holdings_pipeline():
         """
         print(f"💰 Calculating holdings values")
         
+        # Deduplicate trades using trade_id as unique key
+        seen_trade_ids = set()
+        deduplicated_trades = []
+        duplicate_count = 0
+        
+        for trade in trades:
+            trade_id = trade['trade_id']
+            if trade_id not in seen_trade_ids:
+                seen_trade_ids.add(trade_id)
+                deduplicated_trades.add(trade)
+            else:
+                duplicate_count += 1
+                logging.warning(f"Duplicate trade_id detected and filtered: {trade_id} (symbol: {trade['etf_symbol']})")
+        
+        if duplicate_count > 0:
+            print(f"⚠️  Filtered {duplicate_count} duplicate trades")
+            logging.info(f"Filtered {duplicate_count} duplicate trades before aggregation")
+        
         holdings = []
         total_value = 0
         
-        for trade in trades:
+        for trade in deduplicated_trades:
             trade_symbol = trade['etf_symbol']
             trade_shares = trade['shares']
             business_date = trade['trade_date']
@@ -339,6 +358,23 @@ def etf_holdings_pipeline():
         
         # Get database connection
         pg_hook = PostgresHook(postgres_conn_id='pipeline_test_rds')
+        
+        # Validate for duplicate trade_ids before aggregation
+        trade_ids = [h['trade_id'] for h in holdings]
+        unique_trade_ids = set(trade_ids)
+        
+        if len(trade_ids) != len(unique_trade_ids):
+            duplicate_count = len(trade_ids) - len(unique_trade_ids)
+            logging.warning(f"Detected {duplicate_count} duplicate trade_ids in holdings before write")
+            print(f"⚠️  Warning: {duplicate_count} duplicate trade_ids detected in holdings")
+            
+            # Log specific duplicate trade_ids
+            seen = set()
+            for trade_id in trade_ids:
+                if trade_id in seen:
+                    logging.warning(f"Duplicate trade_id in holdings: {trade_id}")
+                else:
+                    seen.add(trade_id)
         
         # Aggregate holdings by symbol for final output
         etf_totals = {}
@@ -413,3 +449,4 @@ def etf_holdings_pipeline():
 
 # Instantiate the DAG
 dag = etf_holdings_pipeline()
+```
