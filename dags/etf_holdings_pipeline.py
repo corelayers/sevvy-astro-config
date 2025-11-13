@@ -288,26 +288,63 @@ def etf_holdings_pipeline():
             
             matched = False
             
-            for price in usd_prices:
-                if price['symbol'] == trade_symbol:
-                    holding_value = trade_shares * price['usd_price']
+            # Check if we have constituent-level data (asset_weight present)
+            matching_prices = [p for p in usd_prices if p['symbol'] == trade_symbol]
+            
+            if matching_prices:
+                has_asset_weight = any(p.get('asset_weight') is not None for p in matching_prices)
+                
+                if has_asset_weight:
+                    # Constituent-level data: calculate weighted average price
+                    total_weighted_price = 0
+                    total_weight = 0
                     
-                    holdings.append({
-                        'business_date': business_date,
-                        'etf_symbol': trade_symbol,
-                        'shares': trade_shares,
-                        'price_usd': price['usd_price'],
-                        'holding_value_usd': holding_value,
-                        'trade_id': trade['trade_id'],
-                        'price_date': price['price_date'],
-                        'asset_id': price.get('asset_id'),
-                        'asset_weight': price.get('asset_weight')
-                    })
+                    for price in matching_prices:
+                        if price.get('asset_weight') is not None:
+                            total_weighted_price += price['usd_price'] * price['asset_weight']
+                            total_weight += price['asset_weight']
                     
-                    total_value += holding_value
-                    matched = True
-                    
-                    print(f"  {trade_symbol}: {trade_shares:,.2f} shares × ${price['usd_price']:,.2f} = ${holding_value:,.2f}")
+                    if total_weight > 0:
+                        weighted_avg_price = total_weighted_price / total_weight
+                        holding_value = trade_shares * weighted_avg_price
+                        
+                        holdings.append({
+                            'business_date': business_date,
+                            'etf_symbol': trade_symbol,
+                            'shares': trade_shares,
+                            'price_usd': weighted_avg_price,
+                            'holding_value_usd': holding_value,
+                            'trade_id': trade['trade_id'],
+                            'price_date': matching_prices[0]['price_date'],
+                            'asset_id': None,
+                            'asset_weight': None
+                        })
+                        
+                        total_value += holding_value
+                        matched = True
+                        
+                        print(f"  {trade_symbol}: {trade_shares:,.2f} shares × ${weighted_avg_price:,.2f} (weighted avg) = ${holding_value:,.2f}")
+                else:
+                    # Aggregated data: use direct multiplication
+                    for price in matching_prices:
+                        holding_value = trade_shares * price['usd_price']
+                        
+                        holdings.append({
+                            'business_date': business_date,
+                            'etf_symbol': trade_symbol,
+                            'shares': trade_shares,
+                            'price_usd': price['usd_price'],
+                            'holding_value_usd': holding_value,
+                            'trade_id': trade['trade_id'],
+                            'price_date': price['price_date'],
+                            'asset_id': price.get('asset_id'),
+                            'asset_weight': price.get('asset_weight')
+                        })
+                        
+                        total_value += holding_value
+                        matched = True
+                        
+                        print(f"  {trade_symbol}: {trade_shares:,.2f} shares × ${price['usd_price']:,.2f} = ${holding_value:,.2f}")
             
             if not matched:
                 logging.warning(f"No price found for trade {trade['trade_id']} (symbol: {trade_symbol})")
