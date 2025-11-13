@@ -124,11 +124,14 @@ def etf_holdings_pipeline():
         # Get database connection
         pg_hook = PostgresHook(postgres_conn_id='pipeline_test_rds')
         
-        # Query to fetch ETF prices
+        # Query to fetch ETF prices with aggregation at ETF level
         query = """
-            SELECT price_date, symbol, price, currency, asset_id, asset_weight
+            SELECT symbol, 
+                   SUM(price * COALESCE(asset_weight, 1.0)) as weighted_price, 
+                   currency
             FROM public.etf_market_data
             WHERE price_date = %s
+            GROUP BY symbol, currency
             ORDER BY symbol
         """
         
@@ -139,12 +142,10 @@ def etf_holdings_pipeline():
         market_data = []
         for row in results:
             market_data.append({
-                'price_date': str(row[0]),
-                'symbol': row[1],
-                'price': float(row[2]),
-                'currency': row[3],
-                'asset_id': row[4],
-                'asset_weight': float(row[5]) if row[5] else None
+                'price_date': business_date,
+                'symbol': row[0],
+                'price': float(row[1]),
+                'currency': row[2]
             })
         
         print(f"✅ Found {len(market_data)} ETF prices for {business_date}")
@@ -234,6 +235,16 @@ def etf_holdings_pipeline():
         """
         print(f"🧮 Calculating USD prices for {len(market_data)} ETFs")
         
+        # Validate market data granularity
+        symbol_counts = {}
+        for etf in market_data:
+            symbol = etf['symbol']
+            symbol_counts[symbol] = symbol_counts.get(symbol, 0) + 1
+        
+        for symbol, count in symbol_counts.items():
+            if count > 1:
+                logging.warning(f"Market data granularity issue: symbol {symbol} has {count} records")
+        
         usd_prices = []
         
         for etf in market_data:
@@ -260,9 +271,7 @@ def etf_holdings_pipeline():
                 'symbol': etf['symbol'],
                 'original_price': original_price,
                 'original_currency': currency,
-                'usd_price': usd_price,
-                'asset_id': etf.get('asset_id'),
-                'asset_weight': etf.get('asset_weight')
+                'usd_price': usd_price
             })
         
         print(f"✅ Calculated USD prices for {len(usd_prices)} ETFs")
@@ -274,9 +283,28 @@ def etf_holdings_pipeline():
     def calculate_holdings(usd_prices: List[Dict[str, Any]], 
                           trades: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        Calculate holdings values by matching trades with prices
+        Calculate holdings values by matching trades with prices at ETF symbol level
         """
         print(f"💰 Calculating holdings values")
+        
+        # Validate market data granularity
+        symbol_counts = {}
+        for price in usd_prices:
+            symbol = price['symbol']
+            symbol_counts[symbol] = symbol_counts.get(symbol, 0) + 1
+        
+        for symbol, count in symbol_counts.items():
+            if count > 1:
+                logging.warning(f"Market data granularity changed: symbol {symbol} has {count} price records")
+        
+        # Create price lookup by symbol (ETF level)
+        price_lookup = {}
+        for price in usd_prices:
+            symbol = price['symbol']
+            if symbol not in price_lookup:
+                price_lookup[symbol] = price
+            else:
+                logging.warning(f"Duplicate price entry for symbol {symbol}, using first occurrence")
         
         holdings = []
         total_value = 0
@@ -286,30 +314,24 @@ def etf_holdings_pipeline():
             trade_shares = trade['shares']
             business_date = trade['trade_date']
             
-            matched = False
-            
-            for price in usd_prices:
-                if price['symbol'] == trade_symbol:
-                    holding_value = trade_shares * price['usd_price']
-                    
-                    holdings.append({
-                        'business_date': business_date,
-                        'etf_symbol': trade_symbol,
-                        'shares': trade_shares,
-                        'price_usd': price['usd_price'],
-                        'holding_value_usd': holding_value,
-                        'trade_id': trade['trade_id'],
-                        'price_date': price['price_date'],
-                        'asset_id': price.get('asset_id'),
-                        'asset_weight': price.get('asset_weight')
-                    })
-                    
-                    total_value += holding_value
-                    matched = True
-                    
-                    print(f"  {trade_symbol}: {trade_shares:,.2f} shares × ${price['usd_price']:,.2f} = ${holding_value:,.2f}")
-            
-            if not matched:
+            if trade_symbol in price_lookup:
+                price = price_lookup[trade_symbol]
+                holding_value = trade_shares * price['usd_price']
+                
+                holdings.append({
+                    'business_date': business_date,
+                    'etf_symbol': trade_symbol,
+                    'shares': trade_shares,
+                    'price_usd': price['usd_price'],
+                    'holding_value_usd': holding_value,
+                    'trade_id': trade['trade_id'],
+                    'price_date': price['price_date']
+                })
+                
+                total_value += holding_value
+                
+                print(f"  {trade_symbol}: {trade_shares:,.2f} shares × ${price['usd_price']:,.2f} = ${holding_value:,.2f}")
+            else:
                 logging.warning(f"No price found for trade {trade['trade_id']} (symbol: {trade_symbol})")
         
         print(f"✅ Calculated {len(holdings)} holding records")
