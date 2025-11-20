@@ -128,7 +128,7 @@ def etf_holdings_pipeline():
         query = """
             SELECT price_date, symbol, price, currency, asset_id, asset_weight
             FROM public.etf_market_data
-            WHERE price_date = %s
+            WHERE price_date = %s AND asset_id IS NULL
             ORDER BY symbol
         """
         
