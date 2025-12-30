@@ -124,12 +124,13 @@ def etf_holdings_pipeline():
         # Get database connection
         pg_hook = PostgresHook(postgres_conn_id='pipeline_test_rds')
         
-        # Query to fetch ETF prices
+        # Query to fetch ETF prices with deduplication
         query = """
-            SELECT price_date, symbol, price, currency, asset_id, asset_weight
+            SELECT DISTINCT ON (price_date, symbol) 
+                price_date, symbol, price, currency, asset_id, asset_weight
             FROM public.etf_market_data
             WHERE price_date = %s
-            ORDER BY symbol
+            ORDER BY price_date, symbol
         """
         
         # Execute query
