@@ -205,6 +205,45 @@ def merchant_payouts_pipeline():
         
         print(f"🧮 Calculating payouts for {len(transfers)} transfers")
         
+        # Collapse FX rates to one rate per (from_currency, to_currency) using weighted blend
+        def collapse_fx_rates(fx_rates_list: List[Dict[str, Any]]) -> Dict[tuple, float]:
+            """
+            Aggregate multiple FX rate rows per currency pair into a single blended rate.
+            Uses weighted average based on source_weight (defaults to 1.0 if missing).
+            Returns dict keyed by (from_currency, to_currency) with blended mid_rate.
+            """
+            pair_data = {}
+            
+            for rate in fx_rates_list:
+                key = (rate['from_currency'], rate['to_currency'])
+                weight = rate['source_weight'] if rate['source_weight'] is not None else 1.0
+                mid_rate = rate['mid_rate']
+                
+                if key not in pair_data:
+                    pair_data[key] = {'weighted_sum': 0.0, 'weight_sum': 0.0}
+                
+                pair_data[key]['weighted_sum'] += mid_rate * weight
+                pair_data[key]['weight_sum'] += weight
+            
+            # Compute blended rate for each pair
+            blended_rates = {}
+            for key, data in pair_data.items():
+                if data['weight_sum'] > 0:
+                    blended_rates[key] = data['weighted_sum'] / data['weight_sum']
+                else:
+                    # Fallback: use simple average if all weights are zero
+                    matching_rates = [r['mid_rate'] for r in fx_rates_list 
+                                     if (r['from_currency'], r['to_currency']) == key]
+                    blended_rates[key] = sum(matching_rates) / len(matching_rates) if matching_rates else 0.0
+            
+            return blended_rates
+        
+        # Collapse FX rates
+        raw_fx_count = len(fx_rates)
+        blended_fx_rates = collapse_fx_rates(fx_rates)
+        print(f"📊 Collapsed {raw_fx_count} raw FX market data rows into {len(blended_fx_rates)} pair-level rates")
+        logging.info(f"FX rate aggregation: {raw_fx_count} raw rows -> {len(blended_fx_rates)} blended rates")
+        
         # Track merchant totals
         merchant_totals = {}
         
@@ -230,25 +269,20 @@ def merchant_payouts_pipeline():
                 print(f"  Transfer {transfer['transfer_id']}: ${amount_local:,.2f} USD (direct)")
                 continue
             
-            # Find matching FX rate and convert to USD
-            matched = False
-            for fx_rate in fx_rates:
-                if (fx_rate['from_currency'] == currency_code and 
-                    fx_rate['to_currency'] == 'USD'):
-                    
-                    rate = fx_rate['mid_rate']
-                    amount_usd = amount_local * rate
-                    fee_usd = fee_local * rate
-                    
-                    merchant_totals[merchant_id]['amount_usd'] += amount_usd
-                    merchant_totals[merchant_id]['fees_usd'] += fee_usd
-                    merchant_totals[merchant_id]['transfer_count'] += 1
-                    
-                    matched = True
-                    print(f"  Transfer {transfer['transfer_id']}: "
-                          f"{amount_local:,.2f} {currency_code} × {rate} = ${amount_usd:,.2f} USD")
-            
-            if not matched:
+            # Lookup blended FX rate for this currency pair
+            rate_key = (currency_code, 'USD')
+            if rate_key in blended_fx_rates:
+                rate = blended_fx_rates[rate_key]
+                amount_usd = amount_local * rate
+                fee_usd = fee_local * rate
+                
+                merchant_totals[merchant_id]['amount_usd'] += amount_usd
+                merchant_totals[merchant_id]['fees_usd'] += fee_usd
+                merchant_totals[merchant_id]['transfer_count'] += 1
+                
+                print(f"  Transfer {transfer['transfer_id']}: "
+                      f"{amount_local:,.2f} {currency_code} × {rate} = ${amount_usd:,.2f} USD")
+            else:
                 logging.warning(f"No FX rate found for {currency_code} -> USD, "
                                f"skipping transfer {transfer['transfer_id']}")
         
