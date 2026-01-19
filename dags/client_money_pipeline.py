@@ -26,7 +26,7 @@ from airflow.providers.postgres.hooks.postgres import PostgresHook
 import requests
 
 
-CONSOLIDATION_THRESHOLD = 0
+# Threshold filter removed - include all consolidated values for anomaly detection
 
 
 def send_success_webhook(context, records_processed, total_value, business_date):
@@ -259,20 +259,18 @@ def client_money_pipeline():
             
             consolidated_amount = credit_amount - debit_amount - reserve_amount
             
-            # Apply threshold filter
-            if consolidated_amount > CONSOLIDATION_THRESHOLD:
-                consolidated.append({
-                    'business_date': business_date,
-                    'cust_id': cust_id,
-                    'reporting_region': reporting_region,
-                    'consolidated_amount_usd': consolidated_amount
-                })
-                
-                print(f"  Customer {cust_id} ({reporting_region}): "
-                      f"${credit_amount:,.2f} - ${debit_amount:,.2f} - ${reserve_amount:,.2f} = "
-                      f"${consolidated_amount:,.2f}")
+            consolidated.append({
+                'business_date': business_date,
+                'cust_id': cust_id,
+                'reporting_region': reporting_region,
+                'consolidated_amount_usd': consolidated_amount
+            })
+            
+            print(f"  Customer {cust_id} ({reporting_region}): "
+                  f"${credit_amount:,.2f} - ${debit_amount:,.2f} - ${reserve_amount:,.2f} = "
+                  f"${consolidated_amount:,.2f}")
         
-        print(f"✅ Consolidated {len(consolidated)} customer records above threshold")
+        print(f"✅ Consolidated {len(consolidated)} customer records")
         logging.info(f"Consolidated {len(consolidated)} customer records for {business_date}")
         
         return consolidated
