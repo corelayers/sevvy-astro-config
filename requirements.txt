@@ -3,3 +3,6 @@
 # Additional dependencies for webhook functionality
 requests>=2.28.0
 psycopg2-binary>=2.9.0
+
+# ClickHouse connectivity
+clickhouse-driver>=0.2.0
