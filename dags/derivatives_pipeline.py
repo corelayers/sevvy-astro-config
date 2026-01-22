@@ -9,8 +9,8 @@ This DAG consolidates derivatives trades and generates USD-converted feed data:
 5. Calculates USD amounts and writes to derivatives_feed table
 6. Sends success notification webhook
 
-The pipeline uses first-row-only deduplication to handle granularity changes
-in upstream tables, preventing inflated sums when new columns are added.
+The pipeline uses aggregation logic to sum amounts for records sharing the same
+otc_id and currency, preventing data loss when handling duplicate keys.
 """
 
 from datetime import datetime, timedelta
@@ -177,7 +177,7 @@ def derivatives_pipeline():
     ) -> List[Dict[str, Any]]:
         """
         Consolidate exchange and vendor trades into normalized format.
-        Uses first-row-only deduplication to handle granularity changes.
+        Uses aggregation logic to sum amounts for duplicate keys.
         """
         execution_date = context.get('execution_date') or context.get('logical_date')
         business_date = execution_date.strftime('%Y-%m-%d')
@@ -201,20 +201,23 @@ def derivatives_pipeline():
             })
             print(f"  Exchange trade {trade_id}: USD ${trade['bid_px']:,.2f}")
         
-        # Process vendor trades with first-row-only deduplication
+        # Process vendor trades with aggregation logic
         vendor_lookup = {}
         for trade in vendor_trades:
-            if trade['otc_id'] not in vendor_lookup:
-                vendor_lookup[trade['otc_id']] = trade
+            key = (trade['otc_id'], trade['currency'])
+            if key not in vendor_lookup:
+                vendor_lookup[key] = trade.copy()
+            else:
+                vendor_lookup[key]['amount'] += trade['amount']
         
-        for otc_id, trade in vendor_lookup.items():
+        for (otc_id, currency), trade in vendor_lookup.items():
             consolidated.append({
                 'business_date': business_date,
                 'trade_id': otc_id,
-                'currency': trade['currency'],
+                'currency': currency,
                 'amount': trade['amount']
             })
-            print(f"  Vendor trade {otc_id}: {trade['currency']} {trade['amount']:,.2f}")
+            print(f"  Vendor trade {otc_id}: {currency} {trade['amount']:,.2f}")
         
         print(f"Consolidated {len(consolidated)} total trade records")
         logging.info(f"Consolidated {len(consolidated)} trade records for {business_date}")
