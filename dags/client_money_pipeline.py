@@ -233,20 +233,17 @@ def client_money_pipeline():
         credit_lookup = {}
         for credit in credits:
             key = (credit['cust_id'], credit['reporting_region'])
-            if key not in credit_lookup:
-                credit_lookup[key] = credit['amount_usd']
+            credit_lookup[key] = credit_lookup.get(key, 0) + credit['amount_usd']
         
         debit_lookup = {}
         for debit in debits:
             key = (debit['cust_id'], debit['reporting_region'])
-            if key not in debit_lookup:
-                debit_lookup[key] = debit['amount_usd']
+            debit_lookup[key] = debit_lookup.get(key, 0) + debit['amount_usd']
         
         reserve_lookup = {}
         for reserve in reserves:
             key = (reserve['cust_id'], reserve['reporting_region'])
-            if key not in reserve_lookup:
-                reserve_lookup[key] = reserve['amount_usd']
+            reserve_lookup[key] = reserve_lookup.get(key, 0) + reserve['amount_usd']
         
         # Get all unique customer/region combinations
         all_keys = set(credit_lookup.keys()) | set(debit_lookup.keys()) | set(reserve_lookup.keys())
