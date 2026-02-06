@@ -6,4 +6,6 @@ __pycache__/
 astro
 /tests/
 .env.*
+airflow-venv/
+scripts/
 
