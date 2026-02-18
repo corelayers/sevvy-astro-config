@@ -201,11 +201,15 @@ def derivatives_pipeline():
             })
             print(f"  Exchange trade {trade_id}: USD ${trade['bid_px']:,.2f}")
         
-        # Process vendor trades with first-row-only deduplication
+        # Process vendor trades with amount aggregation
         vendor_lookup = {}
         for trade in vendor_trades:
             if trade['otc_id'] not in vendor_lookup:
+                # Initialize with first row's metadata
                 vendor_lookup[trade['otc_id']] = trade
+            else:
+                # Sum amounts for subsequent rows with same otc_id
+                vendor_lookup[trade['otc_id']]['amount'] += trade['amount']
         
         for otc_id, trade in vendor_lookup.items():
             consolidated.append({
