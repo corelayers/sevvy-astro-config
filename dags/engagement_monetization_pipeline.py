@@ -233,20 +233,20 @@ def engagement_monetization_pipeline():
         playback_lookup = {}
         for playback in playback_data:
             key = (playback['content_id'], playback['reporting_bucket'])
-            if key not in playback_lookup:
-                playback_lookup[key] = playback['total_engagement_hours']
+            amount = playback['total_engagement_hours']
+            playback_lookup[key] = playback_lookup.get(key, 0) + amount
         
         ad_impression_lookup = {}
         for ad_impression in ad_impression_data:
             key = (ad_impression['content_id'], ad_impression['reporting_bucket'])
-            if key not in ad_impression_lookup:
-                ad_impression_lookup[key] = ad_impression['total_engagement_hours']
+            amount = ad_impression['total_engagement_hours']
+            ad_impression_lookup[key] = ad_impression_lookup.get(key, 0) + amount
         
         platform_lookup = {}
         for platform in platform_dimensions:
             key = (platform['content_id'], platform['reporting_bucket'])
-            if key not in platform_lookup:
-                platform_lookup[key] = platform['total_engagement_hours']
+            amount = platform['total_engagement_hours']
+            platform_lookup[key] = platform_lookup.get(key, 0) + amount
         
         # Get all unique content/reporting bucket combinations
         all_keys = set(playback_lookup.keys()) | set(ad_impression_lookup.keys()) | set(platform_lookup.keys())
